@@ -210,10 +210,92 @@ class QRCodeGenerator:
             raise RuntimeError(f"QR code generation error: {str(e)}")
 
 
+class CombinedImageGenerator:
+    """Generates combined images with QR code and base64 text."""
+    
+    @staticmethod
+    def generate_combined_image(qr_pixmap: QPixmap, base64_data: str, size: int = 1200) -> QPixmap:
+        """
+        Generate a combined image with QR code and base64 text optimized for laser engraving.
+        
+        Args:
+            qr_pixmap: QR code pixmap
+            base64_data: Base64 encoded data to display
+            size: Size of the combined image (default 1200px for laser engraving)
+            
+        Returns:
+            QPixmap containing the combined image
+        """
+        try:
+            # Create a new pixmap for the combined image
+            combined_pixmap = QPixmap(size, size)
+            combined_pixmap.fill(Qt.GlobalColor.white)
+            
+            # Create painter
+            from PyQt6.QtGui import QPainter, QFont, QPen
+            
+            painter = QPainter(combined_pixmap)
+            painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+            
+            # Calculate layout for laser engraving
+            qr_size = int(size * 0.4)  # QR code takes 40% of the image (smaller)
+            text_height = size - qr_size - 60  # More space for larger text
+            margin = 30
+            
+            # Draw QR code at the top
+            scaled_qr = qr_pixmap.scaled(qr_size, qr_size, Qt.AspectRatioMode.KeepAspectRatio)
+            qr_x = (size - scaled_qr.width()) // 2
+            qr_y = margin
+            painter.drawPixmap(qr_x, qr_y, scaled_qr)
+            
+            # Draw title
+            title_font = QFont()
+            title_font.setPointSize(32)  # Same size as base64 text
+            title_font.setBold(True)
+            painter.setFont(title_font)
+            painter.setPen(QPen(Qt.GlobalColor.black))
+            
+            title = "https://github.com/airdamien/seedBuddy"
+            title_rect = painter.fontMetrics().boundingRect(title)
+            title_x = (size - title_rect.width()) // 2
+            title_y = qr_y + qr_size + 40
+            painter.drawText(title_x, title_y, title)
+            
+            # Draw base64 text - MUCH LARGER for laser engraving
+            text_font = QFont()
+            text_font.setPointSize(32)  # Even larger font size
+            text_font.setFamily("Courier")
+            text_font.setBold(True)  # Bold for better laser engraving
+            painter.setFont(text_font)
+            
+            # Split base64 into smaller chunks for laser engraving
+            chunk_size = 32  # Shorter lines for better readability
+            chunks = [base64_data[i:i+chunk_size] for i in range(0, len(base64_data), chunk_size)]
+            
+            text_y = title_y + 60
+            line_height = painter.fontMetrics().height() + 12  # More spacing between lines
+            
+            for i, chunk in enumerate(chunks):
+                if text_y + line_height > size - margin:
+                    break  # Don't overflow
+                # Center each line of text
+                text_rect = painter.fontMetrics().boundingRect(chunk)
+                text_x = (size - text_rect.width()) // 2
+                painter.drawText(text_x, text_y, chunk)
+                text_y += line_height
+            
+            painter.end()
+            
+            return combined_pixmap
+            
+        except Exception as e:
+            raise RuntimeError(f"Combined image generation error: {str(e)}")
+
+
 class EncryptionWorker(QThread):
     """Background worker for encryption operations."""
     
-    finished = pyqtSignal(bool, str, str, QPixmap)  # success, message, base64_data, qr_pixmap
+    finished = pyqtSignal(bool, str, str, QPixmap, QPixmap)  # success, message, base64_data, qr_pixmap, combined_pixmap
     error = pyqtSignal(str)
     
     def __init__(self, seed_phrase: str, master_passphrase: str):
@@ -243,7 +325,11 @@ class EncryptionWorker(QThread):
             qr_gen = QRCodeGenerator()
             qr_pixmap = qr_gen.generate_qr_code(encrypted_data)
             
-            self.finished.emit(True, "Encryption successful", encrypted_data, qr_pixmap)
+            # Generate combined image
+            combined_gen = CombinedImageGenerator()
+            combined_pixmap = combined_gen.generate_combined_image(qr_pixmap, encrypted_data)
+            
+            self.finished.emit(True, "Encryption successful", encrypted_data, qr_pixmap, combined_pixmap)
             
         except Exception as e:
             self.error.emit(str(e))
@@ -480,6 +566,12 @@ class SeedMasterGUI(QMainWindow):
         self.save_base64_button.setEnabled(False)
         base64_layout.addWidget(self.save_base64_button)
         
+        # Save combined image button
+        self.save_combined_button = QPushButton("🖼️ Save Combined Image")
+        self.save_combined_button.clicked.connect(self.save_combined_image)
+        self.save_combined_button.setEnabled(False)
+        base64_layout.addWidget(self.save_combined_button)
+        
         splitter.addWidget(base64_frame)
         
         output_layout.addWidget(splitter)
@@ -625,7 +717,7 @@ class SeedMasterGUI(QMainWindow):
         self.encryption_worker.error.connect(self.on_encryption_error)
         self.encryption_worker.start()
     
-    def on_encryption_finished(self, success: bool, message: str, base64_data: str, qr_pixmap: QPixmap):
+    def on_encryption_finished(self, success: bool, message: str, base64_data: str, qr_pixmap: QPixmap, combined_pixmap: QPixmap):
         """Handle encryption completion."""
         self.encrypt_button.setEnabled(True)
         
@@ -634,9 +726,13 @@ class SeedMasterGUI(QMainWindow):
             self.qr_label.setPixmap(qr_pixmap)
             self.base64_text.setPlainText(base64_data)
             
+            # Store combined pixmap for saving
+            self.combined_pixmap = combined_pixmap
+            
             # Enable save buttons
             self.save_qr_button.setEnabled(True)
             self.save_base64_button.setEnabled(True)
+            self.save_combined_button.setEnabled(True)
             
             self.statusBar().showMessage("Encryption successful")
             QMessageBox.information(self, "Success", "Seed phrase encrypted successfully!")
@@ -690,6 +786,22 @@ class SeedMasterGUI(QMainWindow):
             with open(file_path, 'w') as f:
                 f.write(base64_data)
             self.statusBar().showMessage(f"Base64 text saved to {file_path}")
+    
+    def save_combined_image(self):
+        """Save combined image (QR code + base64 text) to file."""
+        if not hasattr(self, 'combined_pixmap') or not self.combined_pixmap:
+            return
+        
+        file_path, _ = QFileDialog.getSaveFileName(
+            self,
+            "Save Combined Image",
+            "",
+            "PNG Files (*.png);;All Files (*)"
+        )
+        
+        if file_path:
+            self.combined_pixmap.save(file_path)
+            self.statusBar().showMessage(f"Combined image saved to {file_path}")
     
     def browse_encrypted_file(self):
         """Browse for an encrypted file to decrypt."""
