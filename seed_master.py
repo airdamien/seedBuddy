@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Seed Master - BIP-39 Seed Phrase Encryptor
+Seed Buddy - BIP-39 Seed Phrase Encryptor
 A secure local GUI application for encrypting BIP-39 seed phrases.
 """
 
@@ -319,7 +319,7 @@ class SeedMasterGUI(QMainWindow):
     
     def init_ui(self):
         """Initialize the user interface."""
-        self.setWindowTitle("Seed Master - BIP-39 Seed Phrase Encryptor")
+        self.setWindowTitle("Seed Buddy - BIP-39 Seed Phrase Encryptor")
         self.setGeometry(100, 100, 1200, 800)
         
         # Create central widget with tabs
@@ -348,7 +348,7 @@ class SeedMasterGUI(QMainWindow):
         main_layout = QVBoxLayout(self.encryption_tab)
         
         # Title
-        title_label = QLabel("Seed Master - Secure BIP-39 Encryptor")
+        title_label = QLabel("Seed Buddy - Secure BIP-39 Encryptor")
         title_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         title_font = QFont()
         title_font.setPointSize(16)
@@ -490,7 +490,7 @@ class SeedMasterGUI(QMainWindow):
         main_layout = QVBoxLayout(self.decryption_tab)
         
         # Title
-        title_label = QLabel("Seed Master - Decrypt Seed Phrase")
+        title_label = QLabel("Seed Buddy - Decrypt Seed Phrase")
         title_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         title_font = QFont()
         title_font.setPointSize(16)
